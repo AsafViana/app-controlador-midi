@@ -1,98 +1,165 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+/**
+ * Main Controller Screen
+ *
+ * Composes all BLE MIDI Controller UI components into a cohesive interface:
+ * - ConnectionStatus: fixed header badge showing BLE state
+ * - ChannelSelector: horizontal row of 16 channel buttons
+ * - CCGrid: scrollable list of 128 CC sliders for selected channel
+ * - ScanButton: scan/connect/disconnect action button
+ * - SyncProgress: progress indicator during bulk sync
+ *
+ * Wires useBLEController hook to all components:
+ * - Channel selection updates CCGrid and triggers bulk read if channel not yet synced
+ * - Slider interaction calls sendCC on sliding complete
+ * - Error messages from Connection Store are displayed
+ *
+ * Requirements: 8.4, 8.5, 8.7, 9.1, 10.2, 10.4
+ */
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+import React, { useCallback, useRef, useState } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
-export default function HomeScreen() {
+import { CCGrid } from '../../src/components/CCGrid';
+import { ChannelSelector } from '../../src/components/ChannelSelector';
+import { ConnectionStatus } from '../../src/components/ConnectionStatus';
+import { ScanButton } from '../../src/components/ScanButton';
+import { SyncProgress } from '../../src/components/SyncProgress';
+import { useBLEController } from '../../src/hooks/useBLEController';
+
+export default function ControllerScreen() {
+  const {
+    connectionState,
+    error,
+    scanAndConnect,
+    disconnect,
+    sendCC,
+    syncChannel,
+  } = useBLEController();
+
+  const [selectedChannel, setSelectedChannel] = useState(1);
+
+  // Track which channels have been synced to trigger bulk read on first selection
+  const syncedChannelsRef = useRef<Set<number>>(new Set());
+
+  /**
+   * Handle channel selection:
+   * - Update CCGrid to show the new channel's values
+   * - Trigger bulk read if channel not yet synced and device is connected
+   */
+  const handleChannelChange = useCallback(
+    (channel: number) => {
+      setSelectedChannel(channel);
+
+      // If connected and channel hasn't been synced yet, trigger bulk read
+      if (connectionState === 'connected' && !syncedChannelsRef.current.has(channel)) {
+        syncedChannelsRef.current.add(channel);
+        syncChannel(channel).catch(() => {
+          // Error is already propagated to Connection Store by the hook
+          // Remove from synced set so user can retry
+          syncedChannelsRef.current.delete(channel);
+        });
+      }
+    },
+    [connectionState, syncChannel],
+  );
+
+  /**
+   * Handle slider interaction: call sendCC on sliding complete.
+   * The hook handles optimistic update and rollback on failure.
+   */
+  const handleSlidingComplete = useCallback(
+    (controller: number, value: number) => {
+      sendCC(selectedChannel, controller, value).catch(() => {
+        // Error is already propagated to Connection Store by the hook
+      });
+    },
+    [selectedChannel, sendCC],
+  );
+
+  /**
+   * Mark all channels as synced after a full sync (initial connection).
+   * This is triggered when connection state transitions to 'connected'.
+   */
+  React.useEffect(() => {
+    if (connectionState === 'connected') {
+      // After full sync, mark all 16 channels as synced
+      for (let ch = 1; ch <= 16; ch++) {
+        syncedChannelsRef.current.add(ch);
+      }
+    } else if (connectionState === 'disconnected') {
+      // Reset synced channels on disconnect
+      syncedChannelsRef.current.clear();
+    }
+  }, [connectionState]);
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+    <SafeAreaView style={styles.container} edges={['top']}>
+      {/* Connection Status Badge */}
+      <View style={styles.header}>
+        <ConnectionStatus />
+      </View>
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+      {/* Sync Progress Indicator */}
+      <SyncProgress />
+
+      {/* Error Display */}
+      {error && (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      )}
+
+      {/* Channel Selector */}
+      <ChannelSelector
+        selectedChannel={selectedChannel}
+        onChannelChange={handleChannelChange}
+      />
+
+      {/* CC Grid - 128 sliders for selected channel */}
+      <CCGrid
+        channel={selectedChannel}
+        onSlidingComplete={handleSlidingComplete}
+      />
+
+      {/* Scan/Connect/Disconnect Button */}
+      <View style={styles.footer}>
+        <ScanButton
+          connectionState={connectionState}
+          onScanAndConnect={scanAndConnect}
+          onDisconnect={disconnect}
+        />
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
+  container: {
+    flex: 1,
+    backgroundColor: '#FAFAFA',
+  },
+  header: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
     alignItems: 'center',
-    gap: 8,
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+  errorContainer: {
+    marginHorizontal: 16,
+    marginVertical: 4,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: 'rgba(244, 67, 54, 0.1)',
+    borderRadius: 8,
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  errorText: {
+    color: '#D32F2F',
+    fontSize: 13,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  footer: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
   },
 });

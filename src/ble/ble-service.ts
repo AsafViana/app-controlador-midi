@@ -47,7 +47,9 @@ const DEFAULT_CONFIG: BLEServiceConfig = {
 // ─── BLE Service Class ────────────────────────────────────────────────────────
 
 export class BLEService {
-    private manager: BleManager;
+    // manager is lazily created on first use via ensureManager()
+    // to avoid instantiating BleManager before the Native Module is ready.
+    private _manager: BleManager | null = null;
     private config: BLEServiceConfig;
     private device: Device | null = null;
     private notificationSubscription: Subscription | null = null;
@@ -63,7 +65,22 @@ export class BLEService {
 
     constructor(config: Partial<BLEServiceConfig> = {}) {
         this.config = { ...DEFAULT_CONFIG, ...config };
-        this.manager = new BleManager();
+        // NOTE: BleManager is NOT instantiated here — see ensureManager()
+    }
+
+    /**
+     * Returns the BleManager instance, creating it on first call.
+     * Deferred to avoid 'createClient of null' crash during module init.
+     */
+    private get manager(): BleManager {
+        return this.ensureManager();
+    }
+
+    private ensureManager(): BleManager {
+        if (!this._manager) {
+            this._manager = new BleManager();
+        }
+        return this._manager;
     }
 
     // ─── Scan ─────────────────────────────────────────────────────────────────
@@ -315,7 +332,10 @@ export class BLEService {
      */
     destroy(): void {
         this.cleanupSubscriptions();
-        this.manager.destroy();
+        if (this._manager) {
+            this._manager.destroy();
+            this._manager = null;
+        }
     }
 
     // ─── Getters ──────────────────────────────────────────────────────────────

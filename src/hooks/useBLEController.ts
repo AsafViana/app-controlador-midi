@@ -23,18 +23,27 @@ import { requestBLEPermissions } from '../services/permission-service';
 import { useCCStore } from '../stores/cc-store';
 import { ConnectionState, useConnectionStore } from '../stores/connection-store';
 
-// Module-level singleton BLEService instance
+// Module-level singleton — holds the instance reference but does NOT
+// instantiate BLEService at module load time (BleManager native module
+// is not ready yet at that point, causing 'createClient of null' crash).
 let bleServiceInstance: BLEService | null = null;
 
 function getBLEService(): BLEService {
     if (!bleServiceInstance) {
+        // BLEService constructor no longer calls new BleManager() eagerly;
+        // the manager is created on first actual BLE operation.
         bleServiceInstance = new BLEService();
     }
     return bleServiceInstance;
 }
 
 export function useBLEController() {
-    const bleServiceRef = useRef<BLEService>(getBLEService());
+    // Initialise (or reuse) the singleton inside the hook body so it runs
+    // after the React Native bridge and Native Modules are fully ready.
+    const bleServiceRef = useRef<BLEService | null>(null);
+    if (bleServiceRef.current === null) {
+        bleServiceRef.current = getBLEService();
+    }
 
     // Connection Store
     const connectionState = useConnectionStore((s) => s.state);
@@ -54,7 +63,7 @@ export function useBLEController() {
 
     // Setup BLE service callbacks
     useEffect(() => {
-        const bleService = bleServiceRef.current;
+        const bleService = bleServiceRef.current!;
 
         // Wire CC notifications → CC Store
         bleService.onCCNotification = (msg) => {
@@ -91,7 +100,7 @@ export function useBLEController() {
      * 5. Sync all channels
      */
     const scanAndConnect = useCallback(async (): Promise<void> => {
-        const bleService = bleServiceRef.current;
+        const bleService = bleServiceRef.current!;
 
         try {
             // Step 1: Set state to scanning
@@ -165,7 +174,7 @@ export function useBLEController() {
      * Marks as user-initiated to prevent auto-reconnection.
      */
     const disconnect = useCallback(async (): Promise<void> => {
-        const bleService = bleServiceRef.current;
+        const bleService = bleServiceRef.current!;
 
         try {
             await bleService.disconnect();
@@ -182,7 +191,7 @@ export function useBLEController() {
      */
     const sendCC = useCallback(
         async (channel: number, controller: number, value: number): Promise<void> => {
-            const bleService = bleServiceRef.current;
+            const bleService = bleServiceRef.current!;
             const msg = { channel, controller, value };
 
             // Validate
@@ -217,7 +226,7 @@ export function useBLEController() {
      */
     const syncChannel = useCallback(
         async (channel: number): Promise<void> => {
-            const bleService = bleServiceRef.current;
+            const bleService = bleServiceRef.current!;
 
             try {
                 const values = await bleService.bulkRead(channel);

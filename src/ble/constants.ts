@@ -13,7 +13,7 @@ export const CC_CHAR_UUID = '0000ff01-0000-1000-8000-00805f9b34fb';
 export const BULK_CHAR_UUID = '0000ff02-0000-1000-8000-00805f9b34fb';
 
 // Device identification
-export const BLE_DEVICE_NAME = 'Controlador MIDI BLE';
+export const BLE_DEVICE_NAME = 'Controlador MIDI';
 
 // Validation ranges
 export const CHANNEL_MIN = 1;

@@ -1,112 +1,235 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+/**
+ * Debug Screen
+ *
+ * Shows a real-time log of BLE packets sent and received.
+ * Useful for development and troubleshooting communication issues.
+ *
+ * Features:
+ * - Live packet log with direction (TX/RX), timestamp, and hex data
+ * - Ping test button to verify connection is alive
+ * - Clear log button
+ * - Connection info display
+ */
 
-import { Collapsible } from '@/components/ui/collapsible';
-import { ExternalLink } from '@/components/external-link';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Fonts } from '@/constants/theme';
+import React, { useCallback } from 'react';
+import {
+  FlatList,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
-export default function TabTwoScreen() {
+import { useConnectionStore } from '../../src/stores/connection-store';
+import {
+  PacketLogEntry,
+  usePacketLogStore,
+} from '../../src/stores/packet-log-store';
+
+export default function DebugScreen() {
+  const connectionState = useConnectionStore((s) => s.state);
+  const reconnectAttempt = useConnectionStore((s) => s.reconnectAttempt);
+  const error = useConnectionStore((s) => s.error);
+
+  const entries = usePacketLogStore((s) => s.entries);
+  const clearLog = usePacketLogStore((s) => s.clear);
+
+  const renderEntry = useCallback(({ item }: { item: PacketLogEntry }) => {
+    const time = item.timestamp.toLocaleTimeString('pt-BR', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      fractionalSecondDigits: 3,
+    });
+
+    return (
+      <View style={styles.logEntry}>
+        <Text style={styles.logTime}>{time}</Text>
+        <Text
+          style={[
+            styles.logDirection,
+            item.direction === 'TX' ? styles.logTx : styles.logRx,
+          ]}
+        >
+          {item.direction}
+        </Text>
+        <Text style={styles.logContent}>
+          Ch{item.channel} CC#{item.controller} = {item.value}{' '}
+          <Text style={styles.logHex}>{item.hex}</Text>
+        </Text>
+      </View>
+    );
+  }, []);
+
+  const keyExtractor = useCallback(
+    (item: PacketLogEntry) => String(item.id),
+    [],
+  );
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#D0D0D0', dark: '#353636' }}
-      headerImage={
-        <IconSymbol
-          size={310}
-          color="#808080"
-          name="chevron.left.forwardslash.chevron.right"
-          style={styles.headerImage}
+    <SafeAreaView style={styles.container} edges={['top']}>
+      {/* Header */}
+      <View style={styles.header}>
+        <Text style={styles.title}>Debug BLE</Text>
+        <TouchableOpacity onPress={clearLog} style={styles.clearButton}>
+          <Text style={styles.clearText}>Limpar</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Connection Info */}
+      <View style={styles.infoCard}>
+        <View style={styles.infoRow}>
+          <Text style={styles.infoLabel}>Estado:</Text>
+          <Text style={styles.infoValue}>{connectionState}</Text>
+        </View>
+        {reconnectAttempt > 0 && (
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>Reconexão:</Text>
+            <Text style={styles.infoValue}>
+              Tentativa {reconnectAttempt}/5
+            </Text>
+          </View>
+        )}
+        {error && (
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>Erro:</Text>
+            <Text style={[styles.infoValue, styles.errorText]}>
+              {error}
+            </Text>
+          </View>
+        )}
+        <View style={styles.infoRow}>
+          <Text style={styles.infoLabel}>Pacotes:</Text>
+          <Text style={styles.infoValue}>{entries.length}</Text>
+        </View>
+      </View>
+
+      {/* Packet Log */}
+      <View style={styles.logContainer}>
+        <Text style={styles.logHeader}>
+          Log de Pacotes (últimos {entries.length})
+        </Text>
+        <FlatList
+          data={entries}
+          keyExtractor={keyExtractor}
+          renderItem={renderEntry}
+          style={styles.logList}
+          ListEmptyComponent={
+            <Text style={styles.emptyText}>
+              Nenhum pacote registrado.{'\n'}
+              Conecte ao controlador e interaja com os sliders.
+            </Text>
+          }
         />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText
-          type="title"
-          style={{
-            fontFamily: Fonts.rounded,
-          }}>
-          Explore
-        </ThemedText>
-      </ThemedView>
-      <ThemedText>This app includes example code to help you get started.</ThemedText>
-      <Collapsible title="File-based routing">
-        <ThemedText>
-          This app has two screens:{' '}
-          <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> and{' '}
-          <ThemedText type="defaultSemiBold">app/(tabs)/explore.tsx</ThemedText>
-        </ThemedText>
-        <ThemedText>
-          The layout file in <ThemedText type="defaultSemiBold">app/(tabs)/_layout.tsx</ThemedText>{' '}
-          sets up the tab navigator.
-        </ThemedText>
-        <ExternalLink href="https://docs.expo.dev/router/introduction">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Android, iOS, and web support">
-        <ThemedText>
-          You can open this project on Android, iOS, and the web. To open the web version, press{' '}
-          <ThemedText type="defaultSemiBold">w</ThemedText> in the terminal running this project.
-        </ThemedText>
-      </Collapsible>
-      <Collapsible title="Images">
-        <ThemedText>
-          For static images, you can use the <ThemedText type="defaultSemiBold">@2x</ThemedText> and{' '}
-          <ThemedText type="defaultSemiBold">@3x</ThemedText> suffixes to provide files for
-          different screen densities
-        </ThemedText>
-        <Image
-          source={require('@/assets/images/react-logo.png')}
-          style={{ width: 100, height: 100, alignSelf: 'center' }}
-        />
-        <ExternalLink href="https://reactnative.dev/docs/images">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Light and dark mode components">
-        <ThemedText>
-          This template has light and dark mode support. The{' '}
-          <ThemedText type="defaultSemiBold">useColorScheme()</ThemedText> hook lets you inspect
-          what the user&apos;s current color scheme is, and so you can adjust UI colors accordingly.
-        </ThemedText>
-        <ExternalLink href="https://docs.expo.dev/develop/user-interface/color-themes/">
-          <ThemedText type="link">Learn more</ThemedText>
-        </ExternalLink>
-      </Collapsible>
-      <Collapsible title="Animations">
-        <ThemedText>
-          This template includes an example of an animated component. The{' '}
-          <ThemedText type="defaultSemiBold">components/HelloWave.tsx</ThemedText> component uses
-          the powerful{' '}
-          <ThemedText type="defaultSemiBold" style={{ fontFamily: Fonts.mono }}>
-            react-native-reanimated
-          </ThemedText>{' '}
-          library to create a waving hand animation.
-        </ThemedText>
-        {Platform.select({
-          ios: (
-            <ThemedText>
-              The <ThemedText type="defaultSemiBold">components/ParallaxScrollView.tsx</ThemedText>{' '}
-              component provides a parallax effect for the header image.
-            </ThemedText>
-          ),
-        })}
-      </Collapsible>
-    </ParallaxScrollView>
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  headerImage: {
-    color: '#808080',
-    bottom: -90,
-    left: -35,
-    position: 'absolute',
+  container: {
+    flex: 1,
+    backgroundColor: '#1a1a2e',
   },
-  titleContainer: {
+  header: {
     flexDirection: 'row',
-    gap: 8,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#e0e0e0',
+  },
+  clearButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: 'rgba(244, 67, 54, 0.2)',
+    borderRadius: 6,
+  },
+  clearText: {
+    color: '#F44336',
+    fontWeight: '600',
+    fontSize: 13,
+  },
+  infoCard: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    padding: 12,
+    backgroundColor: '#16213e',
+    borderRadius: 10,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 3,
+  },
+  infoLabel: {
+    color: '#888',
+    fontSize: 13,
+  },
+  infoValue: {
+    color: '#e0e0e0',
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  errorText: {
+    color: '#F44336',
+  },
+  logContainer: {
+    flex: 1,
+    marginHorizontal: 16,
+  },
+  logHeader: {
+    color: '#888',
+    fontSize: 12,
+    marginBottom: 8,
+  },
+  logList: {
+    flex: 1,
+  },
+  logEntry: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 5,
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#2a2a4a',
+  },
+  logTime: {
+    fontSize: 10,
+    color: '#666',
+    width: 85,
+    fontFamily: 'monospace',
+  },
+  logDirection: {
+    fontSize: 11,
+    fontWeight: '700',
+    width: 26,
+    textAlign: 'center',
+  },
+  logTx: {
+    color: '#2196F3',
+  },
+  logRx: {
+    color: '#4CAF50',
+  },
+  logContent: {
+    fontSize: 12,
+    color: '#e0e0e0',
+    flex: 1,
+    fontFamily: 'monospace',
+  },
+  logHex: {
+    color: '#666',
+    fontSize: 10,
+  },
+  emptyText: {
+    color: '#666',
+    textAlign: 'center',
+    marginTop: 40,
+    lineHeight: 22,
   },
 });

@@ -61,13 +61,17 @@ export function useBLEController() {
     const updateChannel = useCCStore((s) => s.updateChannel);
     const getCC = useCCStore((s) => s.getCC);
 
+    // Packet Log Store
+    const addLogEntry = usePacketLogStore((s) => s.addEntry);
+
     // Setup BLE service callbacks
     useEffect(() => {
         const bleService = bleServiceRef.current!;
 
-        // Wire CC notifications → CC Store
+        // Wire CC notifications → CC Store + Packet Log
         bleService.onCCNotification = (msg) => {
             updateCC(msg.channel, msg.controller, msg.value);
+            addLogEntry('RX', msg);
         };
 
         // Wire connection state changes → Connection Store
@@ -89,7 +93,7 @@ export function useBLEController() {
             bleService.onConnectionStateChange = null;
             bleService.onReconnectAttempt = null;
         };
-    }, [updateCC, setConnectionState, setReconnectAttempt, setSyncProgress]);
+    }, [updateCC, setConnectionState, setReconnectAttempt, setSyncProgress, addLogEntry]);
 
     /**
      * Full scan and connect flow:
@@ -209,6 +213,7 @@ export function useBLEController() {
 
             try {
                 await bleService.writeCC(msg);
+                addLogEntry('TX', msg);
             } catch (err) {
                 // Rollback on failure
                 updateCC(channel, controller, previousValue);
@@ -218,7 +223,7 @@ export function useBLEController() {
                 throw err;
             }
         },
-        [getCC, updateCC, setError],
+        [getCC, updateCC, setError, addLogEntry],
     );
 
     /**

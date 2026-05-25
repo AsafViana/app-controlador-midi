@@ -47,7 +47,7 @@
             "peripheral",
             "central"
           ],
-          "bluetoothAlwaysPermission": "Allow $(PRODUCT_NAME) to connect to bluetooth devices"
+          "bluetoothAlwaysPermission": "Este app precisa do Bluetooth para conectar ao Controlador MIDI BLE."
         }
       ]
     ],
